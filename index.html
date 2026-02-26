@@ -23,19 +23,19 @@
             user-select: none;
         }
 
-     #side-panel {
-    width: 420px;
-    height: 100vh;
-    background: white;
-    border-right: 1px solid #e2e8f0;
-    box-shadow: 4px 0 10px rgba(0, 0, 0, 0.05);
-    z-index: 1500;
-    overflow-y: auto;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    transition: transform 0.3s ease;
-}
+        #side-panel {
+            width: 420px;
+            height: 100vh;
+            background: white;
+            border-right: 1px solid #e2e8f0;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.05);
+            z-index: 1500;
+            overflow-y: auto;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+        }
 
         .canvas-area {
             flex-grow: 1;
@@ -200,40 +200,44 @@
             background: #f1f5f9;
         }
 
+        .canvas-area {
+            touch-action: none;
+        }
+
         @media (max-width: 768px) {
 
-    body {
-        flex-direction: column;
-    }
+            body {
+                flex-direction: column;
+            }
 
-    #side-panel {
-        position: fixed;
-        top: 0;
-        left: 0;
-        transform: translateX(-100%);
-        width: 85%;
-        max-width: 350px;
-        height: 100vh;
-    }
+            #side-panel {
+                position: fixed;
+                top: 0;
+                left: 0;
+                transform: translateX(-100%);
+                width: 85%;
+                max-width: 350px;
+                height: 100vh;
+            }
 
-    #side-panel.active {
-        transform: translateX(0);
-    }
+            #side-panel.active {
+                transform: translateX(0);
+            }
 
-    .canvas-area {
-        width: 100%;
-        height: 100vh;
-    }
-}
+            .canvas-area {
+                width: 100%;
+                height: 100vh;
+            }
+        }
     </style>
 </head>
 
 <body>
-<!-- Botón móvil -->
-<button id="toggleSidebar"
-    class="md:hidden fixed top-4 left-4 z-[2000] bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-bold">
-    ☰ Relaciones
-</button>
+    <!-- Botón móvil -->
+    <button id="toggleSidebar"
+        class="md:hidden fixed top-4 left-4 z-[2000] bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-bold">
+        ☰ Relaciones
+    </button>
     <div id="side-panel">
         <div class="p-5 flex-grow">
             <h2 class="text-sm font-bold border-b pb-3 mb-4 text-slate-800 uppercase tracking-wider">Diccionario de
@@ -888,6 +892,77 @@ CREATE TABLE DetalleFactura (
         }
 
         window.addEventListener('load', drawLines);
+
+        // Toggle sidebar mobile
+        const toggleBtn = document.getElementById('toggleSidebar');
+        const sidePanel = document.getElementById('side-panel');
+
+        toggleBtn.addEventListener('click', () => {
+            sidePanel.classList.toggle('active');
+        });
+
+        // Cerrar sidebar al hacer click fuera (mobile)
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768) {
+                if (!sidePanel.contains(e.target) && !toggleBtn.contains(e.target)) {
+                    sidePanel.classList.remove('active');
+                }
+            }
+        });
+
+        // ===== SOPORTE TOUCH (MOVIL) =====
+
+        container.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const table = e.target.closest('.table-card');
+
+            if (table) {
+                isDraggingTable = true;
+                activeTable = table;
+
+                const rect = table.getBoundingClientRect();
+                tableOffset.x = (touch.clientX - rect.left) / scale;
+                tableOffset.y = (touch.clientY - rect.top) / scale;
+
+                document.querySelectorAll('.table-card').forEach(t => t.classList.remove('active'));
+                table.classList.add('active');
+                drawLines();
+            } else {
+                isPanning = true;
+                startX = touch.clientX - panX;
+                startY = touch.clientY - panY;
+
+                document.querySelectorAll('.table-card').forEach(t => t.classList.remove('active'));
+                activeTable = null;
+                drawLines();
+            }
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+
+            if (isDraggingTable && activeTable) {
+                const containerRect = container.getBoundingClientRect();
+
+                let x = (touch.clientX - containerRect.left - panX) / scale - tableOffset.x;
+                let y = (touch.clientY - containerRect.top - panY) / scale - tableOffset.y;
+
+                activeTable.style.left = `${x}px`;
+                activeTable.style.top = `${y}px`;
+
+                drawLines();
+            }
+            else if (isPanning) {
+                panX = touch.clientX - startX;
+                panY = touch.clientY - startY;
+                updateViewport();
+            }
+        });
+
+        document.addEventListener('touchend', () => {
+            isPanning = false;
+            isDraggingTable = false;
+        });
     </script>
 
 </body>
