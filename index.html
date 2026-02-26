@@ -35,6 +35,9 @@
             display: flex;
             flex-direction: column;
             transition: transform 0.3s ease;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            /* suaviza scroll iOS */
         }
 
         .canvas-area {
@@ -195,13 +198,6 @@
             display: flex;
             gap: 10px;
             z-index: 2000;
-        }
-
-        /* Sidebar móvil con scroll interno */
-        #side-panel {
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            /* smooth scroll en iOS */
         }
 
         .zoom-btn {
@@ -938,6 +934,23 @@ CREATE TABLE DetalleFactura (
         document.addEventListener('click', (e) => {
             if (window.innerWidth <= 768) {
                 if (!sidePanel.contains(e.target) && !toggleBtn.contains(e.target)) {
+                    sidePanel.classList.remove('active');
+                }
+            }
+        });
+
+        sidePanel.addEventListener('touchstart', (e) => {
+            e.stopPropagation(); // evita que el touch se propague
+        }, { passive: true });
+
+        sidePanel.addEventListener('touchmove', (e) => {
+            e.stopPropagation(); // evita que el body haga scroll
+        }, { passive: true });
+
+        // Cerrar sidebar al hacer click fuera (ya lo tienes)
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 768) {
+                if (!sidePanel.contains(e.target) && !toggleSidebar.contains(e.target)) {
                     sidePanel.classList.remove('active');
                 }
             }
