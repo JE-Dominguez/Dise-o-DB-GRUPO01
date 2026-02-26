@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClínicaDB - Versión Final Profesional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --line-color: #94a3b8;
+            --line-active: #2563eb;
+            --bg-canvas: #f8fafc;
+        }
+        body {
+            background-color: #f1f5f9;
+            font-family: 'Inter', system-ui, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #side-panel {
+            width: 420px;
+            height: 100vh;
+            background: white;
+            border-right: 1px solid #e2e8f0;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.05);
+            z-index: 100;
+            overflow-y: auto;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .canvas-area {
+            flex-grow: 1;
+            height: 100vh;
+            background: var(--bg-canvas);
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+        }
+        
+        .canvas-area:active { cursor: grabbing; }
+
+        #viewport {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+            transition: transform 0.1s ease-out;
+        }
+
+        .grid-bg {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px);
+            background-size: 35px 35px;
+        }
+
+        .table-card {
+            position: absolute;
+            width: 230px;
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            z-index: 10;
+            cursor: move;
+        }
+        
+        .table-card.active {
+            border: 2px solid var(--line-active);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+            z-index: 50;
+        }
+
+        .header {
+            padding: 10px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            text-align: center;
+            color: white;
+            text-transform: uppercase;
+            border-radius: 7px 7px 0 0;
+            pointer-events: none;
+        }
+        
+        .field {
+            padding: 5px 12px;
+            font-size: 0.7rem;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #f1f5f9;
+            pointer-events: none;
+        }
+        
+        .pk { color: #b45309; font-weight: 800; margin-right: 4px; }
+        .fk { color: #2563eb; font-weight: 800; margin-right: 4px; }
+        .type { color: #94a3b8; font-family: ui-monospace, monospace; font-size: 0.6rem; }
+
+        .mod-pac { background-color: #0ea5e9; }
+        .mod-med { background-color: #6366f1; }
+        .mod-ope { background-color: #f59e0b; }
+        .mod-adm { background-color: #8b5cf6; }
+        .mod-log { background-color: #10b981; }
+
+        svg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        path {
+            fill: none;
+            stroke: var(--line-color);
+            stroke-width: 2;
+            opacity: 0.4;
+            transition: stroke 0.2s, stroke-width 0.2s, opacity 0.2s;
+        }
+        path.highlight {
+            stroke: var(--line-active);
+            stroke-width: 4;
+            opacity: 1;
+        }
+
+        #export-section {
+            border-top: 1px solid #e2e8f0;
+            padding: 1.5rem;
+            background: #f8fafc;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .zoom-btn {
+            background: white;
+            border: 1px solid #cbd5e1;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .zoom-btn:hover { background: #f1f5f9; }
+    </style>
+</head>
+<body>
+
+<div id="side-panel">
+    <div class="p-5 flex-grow">
+        <h2 class="text-sm font-bold border-b pb-3 mb-4 text-slate-800 uppercase tracking-wider">Diccionario de Cardinalidades</h2>
+        
+        <div class="space-y-4 mb-6">
+            <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                <p class="text-[11px] text-blue-700 leading-relaxed font-medium">
+                    🖱️ <b>Arrastrar Fondo:</b> Desplazar vista.<br>
+                    📦 <b>Arrastrar Tablas:</b> Reorganizar elementos.<br>
+                    🔍 <b>Rueda Mouse:</b> Zoom +/-.
+                </p>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-[10px] text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-50 text-slate-500">
+                        <th class="p-2 border">Relación Principal</th>
+                        <th class="p-2 border text-center">Tipo</th>
+                    </tr>
+                </thead>
+                <tbody class="text-slate-600">
+                    <tr><td class="p-2 border">Paciente → Historia Clínica</td><td class="p-2 border text-center font-bold text-green-600">1:1</td></tr>
+                    <tr><td class="p-2 border">Doctor → Consultorio</td><td class="p-2 border text-center font-bold text-green-600">1:1</td></tr>
+                    <tr><td class="p-2 border">Paciente → Cita</td><td class="p-2 border text-center font-bold text-blue-600">1:N</td></tr>
+                    <tr><td class="p-2 border">Doctor → Cita</td><td class="p-2 border text-center font-bold text-blue-600">1:N</td></tr>
+                    <tr><td class="p-2 border">Especialidad → Doctor</td><td class="p-2 border text-center font-bold text-blue-600">1:N</td></tr>
+                    <tr><td class="p-2 border">Cita → Receta / Prueba Lab</td><td class="p-2 border text-center font-bold text-blue-600">1:N</td></tr>
+                    <tr><td class="p-2 border">Rol → Empleado</td><td class="p-2 border text-center font-bold text-blue-600">1:N</td></tr>
+                    <tr><td class="p-2 border">Proveedor → Compra</td><td class="p-2 border text-center font-bold text-blue-600">1:N</td></tr>
+                    <tr class="bg-amber-50 font-bold italic"><td class="p-2 border">Receta ↔ Medicamento</td><td class="p-2 border text-center text-amber-600">N:M</td></tr>
+                    <tr class="bg-amber-50 font-bold italic"><td class="p-2 border">Factura ↔ Medicamento</td><td class="p-2 border text-center text-amber-600">N:M</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="export-section">
+        <h3 class="text-xs font-bold text-slate-500 uppercase mb-3">Descargar Base de Datos</h3>
+        <div class="grid grid-cols-1 gap-2">
+            <button onclick="downloadSQL('sqlserver')" class="w-full bg-slate-800 hover:bg-black text-white py-3 px-4 rounded text-xs font-bold transition flex justify-between items-center">
+                <span>SQL Server (T-SQL)</span>
+                <span class="opacity-50 text-[10px]">.sql</span>
+            </button>
+            <button onclick="downloadSQL('postgres')" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded text-xs font-bold transition flex justify-between items-center">
+                <span>PostgreSQL</span>
+                <span class="opacity-50 text-[10px]">.sql</span>
+            </button>
+            <button onclick="downloadSQL('mysql')" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 px-4 rounded text-xs font-bold transition flex justify-between items-center">
+                <span>MySQL</span>
+                <span class="opacity-50 text-[10px]">.sql</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="canvas-area" id="canvas-container">
+    <div class="zoom-controls">
+        <div class="zoom-btn" onclick="applyZoom(0.1)">+</div>
+        <div class="zoom-btn" onclick="applyZoom(-0.1)">-</div>
+        <div class="zoom-btn" onclick="resetZoom()">⟲</div>
+    </div>
+    <div id="viewport">
+        <div class="grid-bg"></div>
+        <svg id="svg-connections"></svg>
+
+        <!-- MÓDULO PACIENTES -->
+        <div class="table-card" data-id="paciente" style="top: 100px; left: 100px;">
+            <div class="header mod-pac">Paciente</div>
+            <div class="field"><span><span class="pk">PK</span>id_paciente</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(50)</span></div>
+            <div class="field"><span>apellido</span><span class="type">NV(50)</span></div>
+            <div class="field"><span>fecha_nac</span><span class="type">DATE</span></div>
+            <div class="field"><span>correo</span><span class="type">NV(100)</span></div>
+        </div>
+
+        <div class="table-card" data-id="historia" style="top: 100px; left: 450px;">
+            <div class="header mod-pac">HistoriaClinica</div>
+            <div class="field"><span><span class="pk">PK</span>id_historia</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_paciente</span><span class="type">INT (U)</span></div>
+            <div class="field"><span>fecha_crea</span><span class="type">DATE</span></div>
+            <div class="field"><span>notas_med</span><span class="type">TEXT</span></div>
+        </div>
+
+        <!-- MÓDULO MÉDICO -->
+        <div class="table-card" data-id="especialidad" style="top: 400px; left: 100px;">
+            <div class="header mod-med">Especialidad</div>
+            <div class="field"><span><span class="pk">PK</span>id_esp</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(50)</span></div>
+        </div>
+
+        <div class="table-card" data-id="doctor" style="top: 550px; left: 100px;">
+            <div class="header mod-med">Doctor</div>
+            <div class="field"><span><span class="pk">PK</span>id_doctor</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(50)</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_esp</span><span class="type">INT</span></div>
+        </div>
+
+        <div class="table-card" data-id="consultorio" style="top: 550px; left: 450px;">
+            <div class="header mod-med">Consultorio</div>
+            <div class="field"><span><span class="pk">PK</span>id_cons</span><span class="type">INT</span></div>
+            <div class="field"><span>numero</span><span class="type">NV(10)</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_doctor</span><span class="type">INT (U)</span></div>
+        </div>
+
+        <!-- MÓDULO OPERATIVO -->
+        <div class="table-card" data-id="cita" style="top: 300px; left: 800px;">
+            <div class="header mod-ope">Cita</div>
+            <div class="field"><span><span class="pk">PK</span>id_cita</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_paciente</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_doctor</span><span class="type">INT</span></div>
+            <div class="field"><span>fecha_hora</span><span class="type">DATETIME</span></div>
+        </div>
+
+        <div class="table-card" data-id="receta" style="top: 100px; left: 1100px;">
+            <div class="header mod-ope">Receta</div>
+            <div class="field"><span><span class="pk">PK</span>id_receta</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_cita</span><span class="type">INT</span></div>
+            <div class="field"><span>fecha</span><span class="type">DATE</span></div>
+        </div>
+
+        <div class="table-card" data-id="receta_det" style="top: 100px; left: 1450px;">
+            <div class="header" style="background:#475569">RecetaDetalle</div>
+            <div class="field"><span><span class="pk">PK/FK</span>id_receta</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="pk/FK">PK/FK</span>id_med</span><span class="type">INT</span></div>
+            <div class="field"><span>dosis</span><span class="type">NV(50)</span></div>
+        </div>
+
+        <div class="table-card" data-id="prueba" style="top: 500px; left: 1100px;">
+            <div class="header mod-ope">PruebaLab</div>
+            <div class="field"><span><span class="pk">PK</span>id_prueba</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_cita</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_lab</span><span class="type">INT</span></div>
+            <div class="field"><span>resultado</span><span class="type">TEXT</span></div>
+        </div>
+
+        <div class="table-card" data-id="laboratorio" style="top: 500px; left: 1450px;">
+            <div class="header mod-ope">Laboratorio</div>
+            <div class="field"><span><span class="pk">PK</span>id_lab</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(100)</span></div>
+        </div>
+
+        <!-- MÓDULO ADMINISTRATIVO -->
+        <div class="table-card" data-id="rol" style="top: 800px; left: 100px;">
+            <div class="header mod-adm">Rol</div>
+            <div class="field"><span><span class="pk">PK</span>id_rol</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(50)</span></div>
+        </div>
+
+        <div class="table-card" data-id="empleado" style="top: 950px; left: 100px;">
+            <div class="header mod-adm">Empleado</div>
+            <div class="field"><span><span class="pk">PK</span>id_emp</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(50)</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_rol</span><span class="type">INT</span></div>
+        </div>
+
+        <div class="table-card" data-id="factura" style="top: 950px; left: 450px;">
+            <div class="header mod-adm">Factura</div>
+            <div class="field"><span><span class="pk">PK</span>id_fac</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_paciente</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_empleado</span><span class="type">INT</span></div>
+            <div class="field"><span>total</span><span class="type">DEC(10,2)</span></div>
+        </div>
+
+        <div class="table-card" data-id="factura_det" style="top: 950px; left: 800px;">
+            <div class="header" style="background:#475569">FacturaDetalle</div>
+            <div class="field"><span><span class="pk">PK/FK</span>id_fac</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="pk/FK">PK/FK</span>id_med</span><span class="type">INT</span></div>
+            <div class="field"><span>cant</span><span class="type">INT</span></div>
+        </div>
+
+        <!-- MÓDULO LOGÍSTICA -->
+        <div class="table-card" data-id="medicamento" style="top: 350px; left: 1800px;">
+            <div class="header mod-log">Medicamento</div>
+            <div class="field"><span><span class="pk">PK</span>id_med</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(100)</span></div>
+            <div class="field"><span>precio</span><span class="type">DEC(10,2)</span></div>
+        </div>
+
+        <div class="table-card" data-id="proveedor" style="top: 650px; left: 1800px;">
+            <div class="header mod-log">Proveedor</div>
+            <div class="field"><span><span class="pk">PK</span>id_prov</span><span class="type">INT</span></div>
+            <div class="field"><span>nombre</span><span class="type">NV(100)</span></div>
+        </div>
+
+        <div class="table-card" data-id="compra" style="top: 800px; left: 1800px;">
+            <div class="header mod-log">Compra</div>
+            <div class="field"><span><span class="pk">PK</span>id_comp</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="fk">FK</span>id_prov</span><span class="type">INT</span></div>
+            <div class="field"><span>total</span><span class="type">DEC(10,2)</span></div>
+        </div>
+
+        <div class="table-card" data-id="compra_det" style="top: 950px; left: 1450px;">
+            <div class="header" style="background:#475569">CompraDetalle</div>
+            <div class="field"><span><span class="pk">PK/FK</span>id_comp</span><span class="type">INT</span></div>
+            <div class="field"><span><span class="pk/FK">PK/FK</span>id_med</span><span class="type">INT</span></div>
+            <div class="field"><span>cant</span><span class="type">INT</span></div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // SQL GENERATION LOGIC (18 TABLAS)
+  const getFullSQL = (flavor) => {
+        // Tipos de datos según el motor
+        const pk = flavor === 'sqlserver' ? 'IDENTITY(1,1) PRIMARY KEY' : (flavor === 'postgres' ? 'SERIAL PRIMARY KEY' : 'INT AUTO_INCREMENT PRIMARY KEY');
+        const nv = flavor === 'postgres' || flavor === 'mysql' ? 'VARCHAR' : 'NVARCHAR';
+        const txt = flavor === 'sqlserver' ? 'NVARCHAR(MAX)' : 'TEXT';
+        const dt = flavor === 'sqlserver' ? 'DATETIME' : 'TIMESTAMP';
+
+        // Lógica para añadir el CREATE DATABASE inicial (Tu código seleccionado)
+        let initScript = `-- SCRIPT COMPLETO CLINICA DB (${flavor.toUpperCase()})\n\n`;
+        
+        if (flavor === 'sqlserver') {
+            initScript += "IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'ClinicaDB')\nBEGIN\n    CREATE DATABASE ClinicaDB;\nEND\nGO\nUSE ClinicaDB;\nGO\n\n";
+        } else if (flavor === 'postgres') {
+            initScript += "-- Nota: Ejecutar la creación por separado si se usa un cliente que no soporta \\gexec\nCREATE DATABASE clinicadb;\n\\c clinicadb;\n\n";
+        } else if (flavor === 'mysql') {
+            initScript += "CREATE DATABASE IF NOT EXISTS ClinicaDB;\nUSE ClinicaDB;\n\n";
+        }
+
+        // Construcción de tablas (respetando los nombres de tu script anterior)
+        return initScript +
+        `CREATE TABLE Especialidad (id_especialidad ${pk}, nombre ${nv}(50));\n` +
+        `CREATE TABLE Rol (id_rol ${pk}, nombre ${nv}(50));\n` +
+        `CREATE TABLE Laboratorio (id_laboratorio ${pk}, nombre ${nv}(100));\n` +
+        `CREATE TABLE Medicamento (id_medicamento ${pk}, nombre ${nv}(100), precio DECIMAL(10,2));\n` +
+        `CREATE TABLE Proveedor (id_proveedor ${pk}, nombre ${nv}(100));\n` +
+        `CREATE TABLE Paciente (id_paciente ${pk}, nombre ${nv}(50), apellido ${nv}(50), fecha_nacimiento DATE, correo ${nv}(100));\n` +
+        `CREATE TABLE HistoriaClinica (id_historia ${pk}, id_paciente INT UNIQUE, fecha_creacion DATE, notas ${txt}, FOREIGN KEY (id_paciente) REFERENCES Paciente(id_paciente));\n` +
+        `CREATE TABLE Doctor (id_doctor ${pk}, nombre ${nv}(50), id_especialidad INT, FOREIGN KEY (id_especialidad) REFERENCES Especialidad(id_especialidad));\n` +
+        `CREATE TABLE Consultorio (id_consultorio ${pk}, id_doctor INT UNIQUE, ubicacion ${nv}(100), FOREIGN KEY (id_doctor) REFERENCES Doctor(id_doctor));\n` +
+        `CREATE TABLE Empleado (id_empleado ${pk}, nombre ${nv}(50), id_rol INT, FOREIGN KEY (id_rol) REFERENCES Rol(id_rol));\n` +
+        `CREATE TABLE Cita (id_cita ${pk}, id_paciente INT, id_doctor INT, fecha_hora ${dt}, FOREIGN KEY (id_paciente) REFERENCES Paciente(id_paciente), FOREIGN KEY (id_doctor) REFERENCES Doctor(id_doctor));\n` +
+        `CREATE TABLE Receta (id_receta ${pk}, id_cita INT, fecha DATE, FOREIGN KEY (id_cita) REFERENCES Cita(id_cita));\n` +
+        `CREATE TABLE RecetaDetalle (id_receta INT, id_medicamento INT, dosis ${nv}(50), PRIMARY KEY (id_receta, id_medicamento), FOREIGN KEY (id_receta) REFERENCES Receta(id_receta), FOREIGN KEY (id_medicamento) REFERENCES Medicamento(id_medicamento));\n` +
+        `CREATE TABLE PruebaLaboratorio (id_prueba ${pk}, id_cita INT, id_laboratorio INT, resultado ${txt}, FOREIGN KEY (id_cita) REFERENCES Cita(id_cita), FOREIGN KEY (id_laboratorio) REFERENCES Laboratorio(id_laboratorio));\n` +
+        `CREATE TABLE Factura (id_factura ${pk}, id_paciente INT, id_empleado INT, total DECIMAL(10,2), FOREIGN KEY (id_paciente) REFERENCES Paciente(id_paciente), FOREIGN KEY (id_empleado) REFERENCES Empleado(id_empleado));\n` +
+        `CREATE TABLE DetalleFactura (id_factura INT, id_medicamento INT, cantidad INT, PRIMARY KEY (id_factura, id_medicamento), FOREIGN KEY (id_factura) REFERENCES Factura(id_factura), FOREIGN KEY (id_medicamento) REFERENCES Medicamento(id_medicamento));\n` +
+        `CREATE TABLE Compra (id_compra ${pk}, id_proveedor INT, total DECIMAL(10,2), FOREIGN KEY (id_proveedor) REFERENCES Proveedor(id_proveedor));\n` +
+        `CREATE TABLE CompraDetalle (id_compra INT, id_medicamento INT, cantidad INT, PRIMARY KEY (id_compra, id_medicamento), FOREIGN KEY (id_compra) REFERENCES Compra(id_compra), FOREIGN KEY (id_medicamento) REFERENCES Medicamento(id_medicamento));\n`;
+    };
+
+    const relations = [
+        ['paciente', 'historia'], ['especialidad', 'doctor'], ['doctor', 'consultorio'],
+        ['paciente', 'cita'], ['doctor', 'cita'], ['cita', 'receta'], ['cita', 'prueba'],
+        ['laboratorio', 'prueba'], ['receta', 'receta_det'], ['medicamento', 'receta_det'],
+        ['rol', 'empleado'], ['paciente', 'factura'], ['empleado', 'factura'],
+        ['factura', 'factura_det'], ['medicamento', 'factura_det'], ['proveedor', 'compra'],
+        ['compra', 'compra_det'], ['medicamento', 'compra_det']
+    ];
+
+    const viewport = document.getElementById('viewport');
+    const container = document.getElementById('canvas-container');
+    const svg = document.getElementById('svg-connections');
+
+    let scale = 1;
+    let isPanning = false;
+    let isDraggingTable = false;
+    let activeTable = null;
+    let panX = 0, panY = 0;
+    let startX, startY;
+    let tableOffset = { x: 0, y: 0 };
+
+    // Zoom Logic
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.05 : 0.05;
+        applyZoom(delta);
+    });
+
+    function applyZoom(delta) {
+        scale = Math.min(Math.max(0.2, scale + delta), 2);
+        updateViewport();
+    }
+
+    function resetZoom() {
+        scale = 1;
+        panX = 0;
+        panY = 0;
+        updateViewport();
+    }
+
+    function updateViewport() {
+        viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
+
+    function drawLines() {
+        svg.innerHTML = '';
+        relations.forEach(([id1, id2]) => {
+            const el1 = document.querySelector(`[data-id="${id1}"]`);
+            const el2 = document.querySelector(`[data-id="${id2}"]`);
+            if (!el1 || !el2) return;
+
+            const x1 = el1.offsetLeft + el1.offsetWidth;
+            const y1 = el1.offsetTop + (el1.offsetHeight / 2);
+            const x2 = el2.offsetLeft;
+            const y2 = el2.offsetTop + (el2.offsetHeight / 2);
+
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            const cp = Math.min(Math.abs(x2 - x1) / 1.5, 150);
+            path.setAttribute("d", `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`);
+            path.setAttribute("id", `link-${id1}-${id2}`);
+            
+            // Highlight logic
+            if (activeTable) {
+                const activeId = activeTable.getAttribute('data-id');
+                if (id1 === activeId || id2 === activeId) {
+                    path.classList.add('highlight');
+                }
+            }
+            
+            svg.appendChild(path);
+        });
+    }
+
+    container.addEventListener('mousedown', (e) => {
+        const table = e.target.closest('.table-card');
+        if (table) {
+            isDraggingTable = true;
+            activeTable = table;
+            const rect = table.getBoundingClientRect();
+            // Offset must account for scale
+            tableOffset.x = (e.clientX - rect.left) / scale;
+            tableOffset.y = (e.clientY - rect.top) / scale;
+            
+            document.querySelectorAll('.table-card').forEach(t => t.classList.remove('active'));
+            table.classList.add('active');
+            drawLines(); // Highlighting starts
+        } else {
+            isPanning = true;
+            startX = e.clientX - panX;
+            startY = e.clientY - panY;
+            // Deselect all
+            document.querySelectorAll('.table-card').forEach(t => t.classList.remove('active'));
+            activeTable = null;
+            drawLines();
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (isDraggingTable && activeTable) {
+            const containerRect = container.getBoundingClientRect();
+            let x = (e.clientX - containerRect.left - panX) / scale - tableOffset.x;
+            let y = (e.clientY - containerRect.top - panY) / scale - tableOffset.y;
+            activeTable.style.left = `${x}px`;
+            activeTable.style.top = `${y}px`;
+            drawLines();
+        } 
+        else if (isPanning) {
+            panX = e.clientX - startX;
+            panY = e.clientY - startY;
+            updateViewport();
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        isPanning = false;
+        isDraggingTable = false;
+        // Keep activeTable reference until next click to maintain highlighting
+    });
+
+    function downloadSQL(type) {
+        const sql = getFullSQL(type);
+        const blob = new Blob([sql], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ClinicaDB_Full_${type}.sql`;
+        a.click();
+    }
+
+    window.addEventListener('load', drawLines);
+</script>
+
+</body>
+</html>
